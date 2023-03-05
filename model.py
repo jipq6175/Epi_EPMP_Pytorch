@@ -7,12 +7,39 @@ import numpy as np
 
 from torch_geometric.data import Data
 from torch_geometric.nn import GATConv, GCNConv, Linear
-from torch_geometric.utils import to_scipy_sparse_matrix, add_self_loops
+from torch_geometric.utils import add_self_loops
 
-from tqdm.auto import tqdm
-from torch.nn import BCEWithLogitsLoss, Sequential, Tanh, BatchNorm1d
+from torch.nn import Sequential, Tanh, BatchNorm1d
 
 
+# data class
+class AbAgPair(Data): 
+    
+    def __init__(self, antigen, antibody): 
+        super().__init__()
+        
+        # antigen: add prefix 'ag' to all fields
+        ag_attrs = ['edge_index', 'x']
+        if antigen is not None: 
+            for ag_attr in ag_attrs: 
+                setattr(self, f'ag_{ag_attr}', getattr(antigen, ag_attr))
+        
+        # antibody: add prefix 'ab' to all fields
+        ab_attrs = ['edge_index', 'x']
+        if antibody is not None: 
+            for ab_attr in ab_attrs: 
+                setattr(self, f'ab_{ab_attr}', getattr(antibody, ab_attr))
+    
+    # incremental operation: for minibatching
+    # the index incremental follows # of nodes of antibody or antigen
+    def __inc__(self, key, value, *args, **kwargs):
+        if key == 'ag_edge_index': return self.ag_x.shape[0]
+        elif key == 'ab_edge_index': return self.ab_x.shape[0]
+        else: return super().__inc__(key, value, *args, **kwargs)
+
+
+
+        
 def sample_balanced_indices(y): 
     pos_ix = torch.nonzero(y).view(-1).cpu()
     n_pos = pos_ix.shape[0]
@@ -81,7 +108,7 @@ def bipartite(ag_x, ag_x_batch, ab_x, ab_x_batch):
 class EpiEPMP(torch.nn.Module): 
     
     def __init__(self, node_attr_dim, edge_attr_dim, hidden_dim, h1_dim, h2_dim, share_weight=False, dropout=0.2, heads=4): 
-        super(PairedGNN, self).__init__()
+        super(EpiEPMP, self).__init__()
         
         self.node_attr_dim = node_attr_dim
         self.edge_attr_dim = edge_attr_dim
